@@ -144,7 +144,7 @@ http_ctor(JSContext* cx, JSObject* req)
     http = (HTTPData*) malloc(sizeof(HTTPData));
     if(!http)
     {
-        JS_ReportError(cx, "Failed to create CouchHTTP instance.");
+        JS_ReportErrorUTF8(cx, "Failed to create CouchHTTP instance.");
         goto error;
     }
 
@@ -155,11 +155,11 @@ http_ctor(JSContext* cx, JSObject* req)
 
     if(!JS_SetPrivate(cx, req, http))
     {
-        JS_ReportError(cx, "Failed to set private CouchHTTP data.");
+        JS_ReportErrorUTF8(cx, "Failed to set private CouchHTTP data.");
         goto error;
     }
 
-    ret = JS_TRUE;
+    ret = true;
     goto success;
 
 error:
@@ -191,18 +191,18 @@ http_open(JSContext* cx, JSObject* req, JS::Value mth, JS::Value url, JS::Value 
     bool ret = false;
 
     if(!http) {
-        JS_ReportError(cx, "Invalid CouchHTTP instance.");
+        JS_ReportErrorUTF8(cx, "Invalid CouchHTTP instance.");
         goto done;
     }
 
     if(JSVAL_IS_VOID(mth)) {
-        JS_ReportError(cx, "You must specify a method.");
+        JS_ReportErrorUTF8(cx, "You must specify a method.");
         goto done;
     }
 
     method = enc_string(cx, mth, NULL);
     if(!method) {
-        JS_ReportError(cx, "Failed to encode method.");
+        JS_ReportErrorUTF8(cx, "Failed to encode method.");
         goto done;
     }
     
@@ -211,14 +211,14 @@ http_open(JSContext* cx, JSObject* req, JS::Value mth, JS::Value url, JS::Value 
     }
     
     if(methid > OPTIONS) {
-        JS_ReportError(cx, "Invalid method specified.");
+        JS_ReportErrorUTF8(cx, "Invalid method specified.");
         goto done;
     }
 
     http->method = methid;
 
     if(JSVAL_IS_VOID(url)) {
-        JS_ReportError(cx, "You must specify a URL.");
+        JS_ReportErrorUTF8(cx, "You must specify a URL.");
         goto done;
     }
 
@@ -229,12 +229,12 @@ http_open(JSContext* cx, JSObject* req, JS::Value mth, JS::Value url, JS::Value 
 
     http->url = enc_string(cx, url, NULL);
     if(http->url == NULL) {
-        JS_ReportError(cx, "Failed to encode URL.");
+        JS_ReportErrorUTF8(cx, "Failed to encode URL.");
         goto done;
     }
     
     if(JSVAL_IS_BOOLEAN(snc) && JSVAL_TO_BOOLEAN(snc)) {
-        JS_ReportError(cx, "Synchronous flag must be false.");
+        JS_ReportErrorUTF8(cx, "Synchronous flag must be false.");
         goto done;
     }
     
@@ -246,7 +246,7 @@ http_open(JSContext* cx, JSObject* req, JS::Value mth, JS::Value url, JS::Value 
     // Disable Expect: 100-continue
     http->req_headers = curl_slist_append(http->req_headers, "Expect:");
 
-    ret = JS_TRUE;
+    ret = true;
 
 done:
     if(method) free(method);
@@ -265,47 +265,47 @@ http_set_hdr(JSContext* cx, JSObject* req, JS::Value name, JS::Value val)
     bool ret = false;
 
     if(!http) {
-        JS_ReportError(cx, "Invalid CouchHTTP instance.");
+        JS_ReportErrorUTF8(cx, "Invalid CouchHTTP instance.");
         goto done;
     }
 
     if(JSVAL_IS_VOID(name))
     {
-        JS_ReportError(cx, "You must speciy a header name.");
+        JS_ReportErrorUTF8(cx, "You must speciy a header name.");
         goto done;
     }
 
     keystr = enc_string(cx, name, NULL);
     if(!keystr)
     {
-        JS_ReportError(cx, "Failed to encode header name.");
+        JS_ReportErrorUTF8(cx, "Failed to encode header name.");
         goto done;
     }
     
     if(JSVAL_IS_VOID(val))
     {
-        JS_ReportError(cx, "You must specify a header value.");
+        JS_ReportErrorUTF8(cx, "You must specify a header value.");
         goto done;
     }
     
     valstr = enc_string(cx, val, NULL);
     if(!valstr)
     {
-        JS_ReportError(cx, "Failed to encode header value.");
+        JS_ReportErrorUTF8(cx, "Failed to encode header value.");
         goto done;
     }
     
     hdrlen = strlen(keystr) + strlen(valstr) + 3;
     hdrbuf = (char*) malloc(hdrlen * sizeof(char));
     if(!hdrbuf) {
-        JS_ReportError(cx, "Failed to allocate header buffer.");
+        JS_ReportErrorUTF8(cx, "Failed to allocate header buffer.");
         goto done;
     }
     
     snprintf(hdrbuf, hdrlen, "%s: %s", keystr, valstr);
     http->req_headers = curl_slist_append(http->req_headers, hdrbuf);
 
-    ret = JS_TRUE;
+    ret = true;
 
 done:
     if(keystr) free(keystr);
@@ -323,14 +323,14 @@ http_send(JSContext* cx, JSObject* req, JS::Value body)
     bool ret = false;
     
     if(!http) {
-        JS_ReportError(cx, "Invalid CouchHTTP instance.");
+        JS_ReportErrorUTF8(cx, "Invalid CouchHTTP instance.");
         goto done;
     }
 
     if(!JSVAL_IS_VOID(body)) {
         bodystr = enc_string(cx, body, &bodylen);
         if(!bodystr) {
-            JS_ReportError(cx, "Failed to encode body.");
+            JS_ReportErrorUTF8(cx, "Failed to encode body.");
             goto done;
         }
     }
@@ -348,7 +348,7 @@ http_status(JSContext* cx, JSObject* req)
     HTTPData* http = (HTTPData*) JS_GetPrivate(cx, req);
     
     if(!http) {
-        JS_ReportError(cx, "Invalid CouchHTTP instance.");
+        JS_ReportErrorUTF8(cx, "Invalid CouchHTTP instance.");
         return false;
     }
 
@@ -366,25 +366,25 @@ http_uri(JSContext* cx, JSObject* req, couch_args* args, JS::Value* uri_val)
         uri_str = JS_InternString(cx, "http://localhost:15986/");
         *uri_val = STRING_TO_JSVAL(uri_str);
         JS_SetReservedSlot(cx, req, 0, *uri_val);
-        return JS_TRUE;
+        return true;
     }
 
     // Else check to see if the base url is cached in a reserved slot
     if (JS_GetReservedSlot(cx, req, 0, uri_val) && !JSVAL_IS_VOID(*uri_val)) {
-        return JS_TRUE;
+        return true;
     }
 
     // Read the first line of the couch.uri file.
     if(!((uri_fp = fopen(args->uri_file, "r")) &&
          (uri_str = couch_readline(cx, uri_fp)))) {
-        JS_ReportError(cx, "Failed to read couch.uri file.");
+        JS_ReportErrorUTF8(cx, "Failed to read couch.uri file.");
         goto error;
     }
 
     fclose(uri_fp);
     *uri_val = STRING_TO_JSVAL(uri_str);
     JS_SetReservedSlot(cx, req, 0, *uri_val);
-    return JS_TRUE;
+    return true;
 
 error:
     if(uri_fp) fclose(uri_fp);
@@ -456,24 +456,24 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
     }
     
     if(!HTTP_HANDLE) {
-        JS_ReportError(cx, "Failed to initialize cURL handle.");
+        JS_ReportErrorUTF8(cx, "Failed to initialize cURL handle.");
         goto done;
     }
 
     if(!JS_GetReservedSlot(cx, obj, 0, &tmp)) {
-      JS_ReportError(cx, "Failed to readreserved slot.");
+      JS_ReportErrorUTF8(cx, "Failed to readreserved slot.");
       goto done;
     }
 
     if(!(referer = enc_string(cx, tmp, NULL))) {
-      JS_ReportError(cx, "Failed to encode referer.");
+      JS_ReportErrorUTF8(cx, "Failed to encode referer.");
       goto done;
     }
     curl_easy_setopt(HTTP_HANDLE, CURLOPT_REFERER, referer);
     free(referer);
 
     if(http->method < 0 || http->method > OPTIONS) {
-        JS_ReportError(cx, "INTERNAL: Unknown method.");
+        JS_ReportErrorUTF8(cx, "INTERNAL: Unknown method.");
         goto done;
     }
 
@@ -506,12 +506,12 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
     curl_easy_setopt(HTTP_HANDLE, CURLOPT_WRITEDATA, &state);
 
     if(curl_easy_perform(HTTP_HANDLE) != 0) {
-        JS_ReportError(cx, "Failed to execute HTTP request: %s", ERRBUF);
+        JS_ReportErrorUTF8(cx, "Failed to execute HTTP request: %s", ERRBUF);
         goto done;
     }
     
     if(!state.resp_headers) {
-        JS_ReportError(cx, "Failed to recieve HTTP headers.");
+        JS_ReportErrorUTF8(cx, "Failed to recieve HTTP headers.");
         goto done;
     }
 
@@ -523,7 +523,7 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
         NULL, NULL,
         JSPROP_READONLY
     )) {
-        JS_ReportError(cx, "INTERNAL: Failed to set response headers.");
+        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set response headers.");
         goto done;
     }
     
@@ -537,7 +537,7 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
             jsbody = str_from_binary(cx, state.recvbuf, state.read);
             if(!jsbody) {
                 if(!JS_IsExceptionPending(cx)) {
-                    JS_ReportError(cx, "INTERNAL: Failed to decode body.");
+                    JS_ReportErrorUTF8(cx, "INTERNAL: Failed to decode body.");
                 }
                 goto done;
             }
@@ -554,11 +554,11 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
         NULL, NULL,
         JSPROP_READONLY
     )) {
-        JS_ReportError(cx, "INTERNAL: Failed to set responseText.");
+        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set responseText.");
         goto done;
     }
     
-    ret = JS_TRUE;
+    ret = true;
 
 done:
     if(state.recvbuf) JS_free(cx, state.recvbuf);

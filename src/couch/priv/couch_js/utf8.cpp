@@ -118,11 +118,11 @@ enc_charbuf(const jschar* src, size_t srclen, char* dst, size_t* dstlenp)
     }
     
     *dstlenp = (origDstlen - dstlen);
-    return JS_TRUE;
+    return true;
 
 buffer_too_small:
     *dstlenp = (origDstlen - dstlen);
-    return JS_FALSE;
+    return false;
 }
 
 char*
@@ -234,7 +234,7 @@ dec_charbuf(const char *src, size_t srclen, jschar *dst, size_t *dstlenp)
                 if(v > 0xFFFFF || dstlen < 2)
                 {
                     *dstlenp = (origDstlen - dstlen);
-                    return JS_FALSE;
+                    return false;
                 }
                 
                 if(dstlen < 2) goto buffer_too_small;
@@ -258,15 +258,15 @@ dec_charbuf(const char *src, size_t srclen, jschar *dst, size_t *dstlenp)
     }
 
     *dstlenp = (origDstlen - dstlen);
-    return JS_TRUE;
+    return true;
 
 bad_character:
     *dstlenp = (origDstlen - dstlen);
-    return JS_FALSE;
+    return false;
 
 buffer_too_small:
     *dstlenp = (origDstlen - dstlen);
-    return JS_FALSE;
+    return false;
 }
 
 JSString*

@@ -73,7 +73,7 @@ req_ctor(JSContext* cx, unsigned int argc, JS::Value* vp)
     bool ret;
     JSObject* obj = JS_NewObjectForConstructor(cx, CouchHTTPClass, vp);
     if(!obj) {
-        JS_ReportError(cx, "Failed to create CouchHTTP instance.\n", NULL);
+        JS_ReportErrorUTF8(cx, "Failed to create CouchHTTP instance.\n", NULL);
         return false;
     }
     ret = http_ctor(cx, obj);
@@ -101,7 +101,7 @@ req_open(JSContext* cx, unsigned int argc, JS::Value* vp)
     } else if(argc == 3) {
         ret = http_open(cx, obj, argv[0], argv[1], argv[2]);
     } else {
-        JS_ReportError(cx, "Invalid call to CouchHTTP.open");
+        JS_ReportErrorUTF8(cx, "Invalid call to CouchHTTP.open");
     }
 
     JS_SET_RVAL(cx, vp, JSVAL_VOID);
@@ -119,7 +119,7 @@ req_set_hdr(JSContext* cx, unsigned int argc, JS::Value* vp)
     if(argc == 2) {
         ret = http_set_hdr(cx, obj, argv[0], argv[1]);
     } else {
-        JS_ReportError(cx, "Invalid call to CouchHTTP.set_header");
+        JS_ReportErrorUTF8(cx, "Invalid call to CouchHTTP.set_header");
     }
 
     JS_SET_RVAL(cx, vp, JSVAL_VOID);
@@ -137,7 +137,7 @@ req_send(JSContext* cx, unsigned int argc, JS::Value* vp)
     if(argc == 1) {
         ret = http_send(cx, obj, argv[0]);
     } else {
-        JS_ReportError(cx, "Invalid call to CouchHTTP.send");
+        JS_ReportErrorUTF8(cx, "Invalid call to CouchHTTP.send");
     }
 
     JS_SET_RVAL(cx, vp, JSVAL_VOID);
