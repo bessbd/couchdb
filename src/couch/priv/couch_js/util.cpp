@@ -36,6 +36,19 @@ js_to_string(JSContext* cx, JS::HandleValue val)
     return chars.get();
 }
 
+std::string
+js_to_string(JSContext* cx, JSString *str)
+{
+    JS::UniqueChars chars(JS_EncodeString(cx, str));
+    if(!chars) {
+        JS_ClearPendingException(cx);
+        fprintf(stderr, "Error converting  to string.\n");
+        exit(3);
+    }
+
+    return chars.get();
+}
+
 JSString*
 string_to_js(JSContext* cx, const std::string& s)
 {
@@ -238,7 +251,7 @@ couch_readfile(JSContext* cx, const char* filename)
 
 
 void
-couch_print(JSContext* cx, unsigned int argc, JS::Value* argv)
+couch_print(JSContext* cx, unsigned int argc, JS::CallArgs argv)
 {
     char *bytes = NULL;
     FILE *stream = stdout;
@@ -259,7 +272,7 @@ couch_print(JSContext* cx, unsigned int argc, JS::Value* argv)
 
 
 void
-couch_error(JSContext* cx, const char* mesg, JSErrorReport* report)
+couch_error(JSContext* cx, JSErrorReport* report)
 {
     JS::RootedValue v(cx), stack(cx), replace(cx);
     char* bytes;
@@ -267,7 +280,7 @@ couch_error(JSContext* cx, const char* mesg, JSErrorReport* report)
 
     if(!report || !JSREPORT_IS_WARNING(report->flags))
     {
-        fprintf(stderr, "%s\n", mesg);
+        fprintf(stderr, "%s\n", report->message().c_str());
 
         // Print a stack trace, if available.
         if (JSREPORT_IS_EXCEPTION(report->flags) &&
