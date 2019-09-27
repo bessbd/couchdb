@@ -22,13 +22,15 @@
 
 #include <jsapi.h>
 #include <js/Initialization.h>
+#include <js/Conversions.h>
+#include <js/Wrapper.h>
 
 #include "config.h"
 #include "http.h"
 #include "utf8.h"
 #include "util.h"
 
-
+static bool enableSharedMemory = true;
 
 static JSClassOps global_ops = {
     nullptr,
@@ -148,13 +150,12 @@ req_send(JSContext* cx, unsigned int argc, JS::Value* vp)
     return ret;
 }
 
-// TBD JSPropertySpec related change
 static bool
 req_status(JSContext* cx, unsigned int argc, JS::Value* vp)
 {
-    JS::CallArgs args = JS::CallArgsFromVp(0, vp);
-    //int status = http_status(cx, obj);
-    int status;
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+    JSObject* obj = JS_THIS_OBJECT(cx, vp);
+    int status = http_status(cx, obj);
 
     if(status < 0)
         return false;
@@ -163,40 +164,69 @@ req_status(JSContext* cx, unsigned int argc, JS::Value* vp)
     return true;
 }
 
-// TBD JSPropertySpec related change
 static bool
-//base_url(JSContext *cx, JSObject* obj, jsid pid, JS::Value* vp)
 base_url(JSContext *cx, unsigned int argc, JS::Value* vp)
 {
-    JS::CallArgs args = JS::CallArgsFromVp(0, vp);
-    return true;
-
-    //couch_args *args = (couch_args*)JS_GetContextPrivate(cx);
-    //return http_uri(cx, obj, args, &JS_RVAL(cx, vp));
+    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+    JSObject* obj = JS_THIS_OBJECT(cx, vp);
+    couch_args *cargs = (couch_args*)JS_GetContextPrivate(cx);
+    JS::Value uri_val;
+    bool rc = http_uri(cx, obj, cargs, &uri_val);
+    args.rval().set(uri_val);
+    return rc;
 }
 
+static void
+SetStandardCompartmentOptions(JS::CompartmentOptions& options)
+{
+    options.creationOptions().setSharedMemoryAndAtomicsEnabled(enableSharedMemory);
+}
+
+static JSObject*
+NewSandbox(JSContext* cx, bool lazy)
+{
+    JS::CompartmentOptions options;
+    SetStandardCompartmentOptions(options);
+    JS::RootedObject obj(cx, JS_NewGlobalObject(cx, &global_class, nullptr,
+                                            JS::DontFireOnNewGlobalHook, options));
+    if (!obj)
+        return nullptr;
+
+    {
+        JSAutoCompartment ac(cx, obj);
+        if (!lazy && !JS_InitStandardClasses(cx, obj))
+            return nullptr;
+
+        JS::RootedValue value(cx, JS::BooleanValue(lazy));
+        if (!JS_DefineProperty(cx, obj, "lazy", value, JSPROP_PERMANENT | JSPROP_READONLY))
+            return nullptr;
+
+        JS_FireOnNewGlobalObject(cx, obj);
+    }
+
+    if (!JS_WrapObject(cx, &obj))
+        return nullptr;
+    return obj;
+}
 
 static bool
 evalcx(JSContext *cx, unsigned int argc, JS::Value* vp)
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-
-    JSString* str;
-    //JSObject* sandbox;
-    JSObject* global;
     JSContext* subcx;
-    JSCompartment* call = NULL;
-    const char16_t* src;
-    size_t srclen;
-    JS::Value rval;
     bool ret = false;
     char *name = NULL;
-    JS::RootedObject sandbox(cx);
 
-    sandbox = NULL;
-    //if(!JS_ConvertArguments(cx, argc, args, "S / o", &str, &sandbox)) {
-    //    return false;
-    //}
+    JS::RootedString str(cx, JS::ToString(cx, args[0]));
+    if (!str)
+        return false;
+
+    JS::RootedObject sandbox(cx);
+    if (args.hasDefined(1)) {
+        sandbox = JS::ToObject(cx, args[1]);
+        if (!sandbox)
+            return false;
+    }
 
     subcx = JS_NewContext(8L * 1024L, 8L * 1024L, JS_GetRuntime(cx));
     if(!subcx) {
@@ -207,30 +237,18 @@ evalcx(JSContext *cx, unsigned int argc, JS::Value* vp)
     JS_BeginRequest(subcx);
     JSAutoRequest ar(subcx);
 
-    src = (const char16_t *)js_to_string(cx, str).c_str();
-    srclen = JS_GetStringLength(str);
+    js::AutoStableStringChars strChars(subcx);
+    if (!strChars.initTwoByte(subcx, str))
+        return false;
 
-    // Re-use the compartment associated with the main context,
-    // rather than creating a new compartment */
-    // TBD find way to get existing global object
-    //global = JS_GetGlobalObject(cx);
-    if(global == NULL) goto done;
-    call = JS_EnterCompartment(subcx, global);
+    mozilla::Range<const char16_t> chars = strChars.twoByteRange();
+    size_t srclen = chars.length();
+    const char16_t* src = chars.begin().get();
 
-    if(!sandbox) {
-        //sandbox = JS_NewGlobalObject(subcx, &global_class);
-        JS::CompartmentOptions options;
-    #ifdef ENABLE_STREAMS
-        options.creationOptions().setStreamsEnabled(true);
-    #endif
-        sandbox = JS_NewGlobalObject(subcx,
-            &global_class,
-            nullptr,
-            JS::FireOnNewGlobalHook,
-            options);
-        if(!sandbox || !JS_InitStandardClasses(subcx, sandbox)) {
-            goto done;
-        }
+    if (!sandbox) {
+        sandbox = NewSandbox(subcx, false);
+        if (!sandbox)
+            return false;
     }
 
     if(argc > 2) {
@@ -238,20 +256,30 @@ evalcx(JSContext *cx, unsigned int argc, JS::Value* vp)
     }
 
     if(srclen == 0) {
-        args.rval().setUndefined();  //TBC
+        args.rval().setObject(*sandbox);
     } else {
+        mozilla::Maybe<JSAutoCompartment> ac;
+        unsigned flags;
+        JSObject* unwrapped = UncheckedUnwrap(sandbox, true, &flags);
+        if (flags & js::Wrapper::CROSS_COMPARTMENT) {
+            sandbox = unwrapped;
+            ac.emplace(cx, sandbox);
+        }
+
         JS::CompileOptions opts(cx);
         JS::RootedValue rval(cx);
         opts.setFileAndLine(__FILE__, __LINE__);
-        JS::Evaluate(subcx, opts, src, srclen, &rval);
-        args.rval().set(rval);
+        if (!JS::Evaluate(subcx, opts, src, srclen, args.rval())) {
+             return false;
+         }
     }
     
     ret = true;
+    if (!JS_WrapValue(subcx, args.rval()))
+        return false;
 
 done:
     if(name) JS_free(cx, name);
-    JS_LeaveCompartment(cx, call);
     JS_DestroyContext(subcx);
     return ret;
 }
@@ -282,8 +310,7 @@ quit(JSContext* cx, unsigned int argc, JS::Value* vp)
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
 
-    int exit_code = 0;
-    //JS_ConvertArguments(cx, argc, args, "/i", &exit_code);
+    int exit_code = args[0].toInt32();;
     exit(exit_code);
 }
 
@@ -300,6 +327,7 @@ readline(JSContext* cx, unsigned int argc, JS::Value* vp)
     line = couch_readline(cx, stdin);
     if(line == NULL) return false;
 
+    // return with JSString* instead of JSValue in the past
     args.rval().setString(line);
     return true;
 }
@@ -309,20 +337,14 @@ static bool
 seal(JSContext* cx, unsigned int argc, JS::Value* vp)
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-    JSObject *target;
-    bool deep = false;
-    bool ret;
-
-    //if(!JS_ConvertArguments(cx, argc, argv, "o/b", &target, &deep))
-    //    return false;
-
-    if(!target) {
+    JS::RootedObject target(cx);
+    target = JS::ToObject(cx, args[0]);
+    if (!target)
         args.rval().setUndefined();
         return true;
-    }
-
-    JS::RootedObject rtarget(cx, target);
-    ret = deep ? JS_DeepFreezeObject(cx, rtarget) : JS_FreezeObject(cx, rtarget);
+    bool deep = false;
+    deep = args[1].toBoolean();
+    bool ret = deep ? JS_DeepFreezeObject(cx, target) : JS_FreezeObject(cx, target);
     args.rval().setUndefined();
     return ret;
 }
@@ -333,10 +355,7 @@ js_sleep(JSContext* cx, unsigned int argc, JS::Value* vp)
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
 
-    int duration = 0;
-    //if(!JS_ConvertArguments(cx, argc, argv, "/i", &duration)) {
-    //    return false;
-    //}
+    int duration = args[0].toInt32();
 
 #ifdef XP_WIN
     Sleep(duration);
@@ -348,9 +367,6 @@ js_sleep(JSContext* cx, unsigned int argc, JS::Value* vp)
 }
 
 JSPropertySpec CouchHTTPProperties[] = {
-    //{"status", 0, JSPROP_READONLY, req_status, NULL},
-    //{"base_url", 0, JSPROP_READONLY | JSPROP_SHARED, base_url, NULL},
-    //{0, 0, 0, 0, 0}
     JS_PSG("status", req_status, 0),
     JS_PSG("base_url", base_url, 0),
     JS_PS_END

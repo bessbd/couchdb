@@ -427,7 +427,7 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
     JS::RootedObject robj(cx, obj);
     JS::RootedValue vobj(cx);
 
-    
+
     state.cx = cx;
     state.http = http;
     
@@ -457,21 +457,24 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
     
     if(!HTTP_HANDLE) {
         JS_ReportErrorUTF8(cx, "Failed to initialize cURL handle.");
-        goto done;
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+        return ret;
     }
 
     tmp = JS_GetReservedSlot(obj, 0);
 
     if(!(referer = enc_string(cx, tmp, NULL))) {
-      JS_ReportErrorUTF8(cx, "Failed to encode referer.");
-      goto done;
+        JS_ReportErrorUTF8(cx, "Failed to encode referer.");
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+          return ret;
     }
     curl_easy_setopt(HTTP_HANDLE, CURLOPT_REFERER, referer);
     free(referer);
 
     if(http->method < 0 || http->method > OPTIONS) {
         JS_ReportErrorUTF8(cx, "INTERNAL: Unknown method.");
-        goto done;
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+          return ret;
     }
 
     curl_easy_setopt(HTTP_HANDLE, CURLOPT_CUSTOMREQUEST, METHODS[http->method]);
@@ -504,24 +507,28 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
 
     if(curl_easy_perform(HTTP_HANDLE) != 0) {
         JS_ReportErrorUTF8(cx, "Failed to execute HTTP request: %s", ERRBUF);
-        goto done;
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+        return ret;
     }
     
     if(!state.resp_headers) {
         JS_ReportErrorUTF8(cx, "Failed to recieve HTTP headers.");
-        goto done;
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+        return ret;
     }
-// TBD: the 4th parameter of JS_DefineProperty
-//    tmp = JS::ObjectValue(*state.resp_headers);
-//    if(!JS_DefineProperty(
-//        cx, robj,
-//        "_headers",
-//        tmp,
-//        NULL
-//   )) {
-//        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set response headers.");
-//        goto done;
-//    }
+    tmp = JS::ObjectValue(*state.resp_headers);
+    JS::RootedValue rtmp(cx, tmp);
+
+    if(!JS_DefineProperty(
+        cx, robj,
+        "_headers",
+        rtmp,
+        JSPROP_READONLY
+    )) {
+        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set response headers.");
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+        return ret;;
+    }
     
     if(state.recvbuf) {
         state.recvbuf[state.read] = '\0';
@@ -535,7 +542,8 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
                 if(!JS_IsExceptionPending(cx)) {
                     JS_ReportErrorUTF8(cx, "INTERNAL: Failed to decode body.");
                 }
-                goto done;
+                if(state.recvbuf) JS_free(cx, state.recvbuf);
+                return ret;
             }
         }
         tmp = JS::StringValue(jsbody);
@@ -543,21 +551,20 @@ go(JSContext* cx, JSObject* obj, HTTPData* http, char* body, size_t bodylen)
         tmp = JS_GetEmptyStringValue(cx);
     }
 
-// TBD: the 4th parameter of JS_DefineProperty
-//    if(!JS_DefineProperty(
-//        cx, robj,
-//        "responseText",
-//        tmp,
-//        NULL,
-//        JSPROP_READONLY
-//    )) {
-//        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set responseText.");
-//        goto done;
-//    }
+    JS::RootedValue rtmp2(cx, tmp);
+
+    if(!JS_DefineProperty(
+        cx, robj,
+        "responseText",
+        rtmp2,
+        JSPROP_READONLY
+    )) {
+        JS_ReportErrorUTF8(cx, "INTERNAL: Failed to set responseText.");
+        if(state.recvbuf) JS_free(cx, state.recvbuf);
+        return ret;
+    }
     
     ret = true;
-
-done:
     if(state.recvbuf) JS_free(cx, state.recvbuf);
     return ret;
 }

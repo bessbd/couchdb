@@ -189,6 +189,7 @@ couch_readline(JSContext* cx, FILE* fp)
     char* tmp = NULL;
     size_t used = 0;
     size_t byteslen = 256;
+    size_t oldbyteslen = 256;
     size_t readlen = 0;
 
     bytes = (char *)JS_malloc(cx, byteslen);
@@ -203,7 +204,9 @@ couch_readline(JSContext* cx, FILE* fp)
         }
         
         // Double our buffer and read more.
-        tmp = (char *)JS_realloc(cx, bytes, byteslen, byteslen*2);
+        oldbyteslen = byteslen;
+        byteslen *= 2;
+        tmp = (char *)JS_realloc(cx, bytes, oldbyteslen, byteslen);
         if(!tmp) {
             JS_free(cx, bytes);
             return NULL;
@@ -215,7 +218,7 @@ couch_readline(JSContext* cx, FILE* fp)
     // Treat empty strings specially
     if(used == 0) {
         JS_free(cx, bytes);
-        return JS_NewStringCopyZ(cx, "");
+        return JS_NewStringCopyZ(cx, nullptr);
     }
 
     // Shring the buffer to the actual data size
