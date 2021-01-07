@@ -14,7 +14,8 @@
 
 
 -export([
-    start/4
+    start/4,
+    update_compact_task/1
 ]).
 
 
@@ -281,6 +282,7 @@ copy_compact(#comp_st{} = CompSt) ->
     NewSt = NewSt0#st{compression = Compression},
     NewUpdateSeq = couch_bt_engine:get_update_seq(NewSt0),
     TotalChanges = couch_bt_engine:count_changes_since(St, NewUpdateSeq),
+    DbTotalChanges = couch_bt_engine:count_changes_since(St, 0),
     BufferSize = list_to_integer(
         config:get("database_compaction", "doc_buffer_size", "524288")),
     CheckpointAfter = couch_util:to_integer(
@@ -321,7 +323,8 @@ copy_compact(#comp_st{} = CompSt) ->
         {phase, document_copy},
         {progress, 0},
         {changes_done, 0},
-        {total_changes, TotalChanges}
+        {total_changes, TotalChanges},
+        {db_total_changes, DbTotalChanges}
     ],
     case (Retry =/= nil) and couch_task_status:is_task_added() of
     true ->
@@ -330,7 +333,8 @@ copy_compact(#comp_st{} = CompSt) ->
             {phase, document_copy},
             {progress, 0},
             {changes_done, 0},
-            {total_changes, TotalChanges}
+            {total_changes, TotalChanges},
+            {db_total_changes, DbTotalChanges}
         ]);
     false ->
         couch_task_status:add_task(TaskProps0),
